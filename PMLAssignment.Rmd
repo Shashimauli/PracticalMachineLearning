@@ -1,0 +1,157 @@
+---
+title: "Machine Learning Assignment"
+author: "Shashi Mauli Tripathi"
+date: "Sunday, December 27, 2015"
+output: html_document
+---
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, our goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: [Human Activity Recognition](http://groupware.les.inf.puc-rio.br/har) (see the section on the Weight Lifting Exercise Dataset). 
+
+## Loading Packages
+
+```{r LoadingPackages}
+library(caret)
+library(ggplot2)
+library(rattle)
+library(rpart)
+library(rpart.plot)
+library(corrplot)
+```
+
+## Data
+Downloading and reading train and test datasets
+
+```{r Data, echo = TRUE}
+
+setwd("E:/shashi mauli/d drive/Shashi Documents/Shashi Mauli/Coursera/08_Practical_Machine_Learning/Project Assignemnt/Submission/")
+
+## set.internet(TRUE)
+
+## Downloading training data
+
+## download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile = "./pml-training.csv")
+
+## Downloading testing data
+
+## download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "./pml-testing.csv")
+
+## Reading Training data
+training <- read.csv("./pml-training.csv", na.strings = c("", "NA", "NULL"))
+
+dim(training)
+
+## Reading testing data
+testing <- read.csv("./pml-testing.csv", na.strings = c("", "NA", "NULL"))
+
+dim(testing)
+```
+
+
+## Data Preprocessing
+
+We will Clean the data first before we start building models for prediction.
+
+```{r DataPreprocessing}
+
+## Removing identifier variables
+rmID <- c('X', 'user_name', 'raw_timestamp_part_1', 'raw_timestamp_part_2','cvtd_timestamp', 'new_window', 'num_window')
+
+training_rmID <- training[ , -which(names(training) %in% rmID)]
+
+dim(training_rmID)
+
+## Removing variables with NA values
+training_rmNA <- training_rmID[ , colSums(is.na(training_rmID)) == 0]
+
+dim(training_rmNA)
+```
+
+Now we will remove variables which does not contain any information, i.e., have near zero variability
+
+```{r NonZeroVariance}
+nsv <- nearZeroVar(training_rmNA[sapply(training_rmNA, is.numeric)], saveMetrics = TRUE)
+
+training_nonZeroVar <- training_rmNA[ , nsv$nzv == 0]
+dim(training_nonZeroVar)
+
+```
+
+We will now look for variables which are highly correlated and delete them from the database
+
+```{r HighCorrelation}
+## Computing correlation matrix for numeric variables
+
+corrMatrix <- cor(na.omit(training_nonZeroVar[sapply(training_nonZeroVar, is.numeric)]))
+
+dim(corrMatrix)
+corrplot.mixed(corrMatrix)
+
+## Removing variables which have high correlation
+
+rm_Cor <- findCorrelation(corrMatrix, cutoff = .90, verbose = FALSE)
+
+training_rmCor <- training_nonZeroVar[ , -rm_Cor]
+dim(training_rmCor)
+
+```
+
+The final dataset is ready. We will now split the data in 2 parts-  
+1. train - to build the model  
+2. test - to check for accuracy of the model  
+
+## Splitting Data
+
+```{r SplittingData}
+set.seed(334853)
+prt <- createDataPartition(training_rmCor$classe, p=0.70, list = FALSE)
+trn <- training_rmCor[prt , ]
+tst <- training_rmCor[-prt , ]
+dim(trn) ; dim(tst)
+```
+
+
+## Data Analysis
+
+We will first run "rpart" and check for model accuracy on test data.
+
+```{r AnalysisPart01}
+set.seed(12345)
+modFit <- train(classe ~. , data = trn, method = "rpart")
+predicted <- predict(modFit, tst, type = "raw")
+correctClass <- sum(ifelse(predicted == tst$classe,1,0))
+CorrectClassification <- correctClass/nrow(tst)
+
+fancyRpartPlot(modFit$finalModel)
+```
+
+The model accuracy using "rpart" is `r round(CorrectClassification, 5)`  
+
+`r round(CorrectClassification, 5)` is not very accurate. We will now try "random forest"  
+
+
+```{r AnalysisPart02}
+set.seed(12345)
+modFit <- train(classe ~. , data = trn, method = "rf")
+predicted <- predict(modFit, tst, type = "raw")
+correctClass <- sum(ifelse(predicted == tst$classe,1,0))
+CorrectClassification <- correctClass/nrow(tst)
+summary(modFit)
+```
+
+The model accuracy using "rpart" is `r round(CorrectClassification, 5)`  
+
+`r round(CorrectClassification, 5)` is a very good estimate.
+
+
+## Conclusion
+
+We can now predict the test data with random forest model.
+
+```{r TestPredictions}
+prediction <- predict(modFit, testing, type = "raw")
+prediction
+```
+
+We will now submit these answers to the website.
